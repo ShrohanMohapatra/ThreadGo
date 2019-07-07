@@ -1,0 +1,177 @@
+\documentclass{article}
+\usepackage{amsmath,amssymb,enumerate,algorithm,algorithmic}
+\title{ThreadGo: A multithreaded hybrid acceleration of the matrix multiplication}
+\author{
+by Shrohan Mohapatra \\
+Email ID: shrohanapple@gmail.com
+}
+\begin{document}
+\maketitle
+
+\section{Introduction}
+
+There have been several formal algorithmic attempts towards the optimisation of the matrix multiplication, some focussing on exploration of bilinear and trilinear algorithms \cite{strassen, schonhage, coppersmith, kleinberg, williams}, and others being averse to calculate the matrix multiplication \cite{raz}. The fastest known algorithm for matrix multiplication is the one given by Le Gall \cite{legall} which is of complexity $O(n^{2.3728639})$. But what lies in the hindsight of such theoretical algorithm designs is that
+
+\begin{enumerate}
+	\item Post-Strassen sub-cubic matrix multiplication algorithms are \textit{mere approximations}. These show an asymptotic possibility of the tensor power of a certain algebraic identity to work out that way.
+	\item Also, the complexity of these algorithms often do not imply their pragmatic applicability because the associated constant of proportionality is \textit{estimably large}, which may render these slower than the existing \textit{asymptotically slower} algorithms.
+\end{enumerate}
+
+The current fastest \textit{serial algorithm} for matrix multiplication popular in the commercial domain is the Strassen's algorithm, which is known to run fairly faster than the standard school-book algorithm. Many cache-aware and cache-oblivious algorithm designs have been proposed \cite{skeina, harald, lam} in order to accelerate the process of matrix multiplication in a single core. To improve further upon the computational aspect of the same, many parallel and distributed versions \cite{randall,irony, kak} of the school book algorithm have been suggested.
+
+In this Python 3.7 package "ThreadGo", I have tried the implementation of a hybrid matrix multiplication algorithm that switches between the multithreaded versions of the Strassen's algorithm and the naive definition as per the availability of the virtual memory to the program. The package assumes significant number of cores for the platform and innocently launches scalable number of threads into the environment in an attempt to parallelise the \textit{sequential independent} sections of the individual algorithms. One could easily explain the design formally using the \textit{cellular automata based approach} \cite{shrohan} but that would unnecessarily complicate the overall mathematical foundations. So in the subsequent sections of this documentation, I would sketch the pen portrait of the strategy of parallelization of the respective sections of the algorithm.
+
+\section{Parallelization of the school book algorithm}
+
+The mathematical definition of the multiplication of two $n \times n$ matrices $A_{i,j}$ and $B_{i,j}$ is as follows
+
+\begin{equation}
+(AB)_{(i,j),1 \leq i \leq n,1 \leq j \leq n} = \sum_{k=1}^{n} A_{i,k} B_{k,j}
+\end{equation}
+
+\begin{algorithm}
+\caption{Naive matrix multiplication}
+\label{schoolbook}
+\begin{algorithmic}
+\REQUIRE Input $n \times n$ matrices $A$ and $B$
+\ENSURE Output matrix $C = A \times B$
+\STATE $C$ \leftarrow $[[0,0,0,0, \cdots (n \text{ times}) \cdots 0],\cdots (n \text{ times}) \cdots,[0, \cdots (n \text{ times}) \cdots 0]]$
+\FOR{$i=1;i \leq n;i++$}
+\FOR{$j=1;j \leq n;j++$}
+\FOR{$k=1;k \leq n;k++$}
+$C[i][j] \leftarrow C[i][j] + A[i][k] * B[k][j]$ \label{line1}
+\ENDFOR
+\ENDFOR
+\ENDFOR
+\end{algorithmic}
+\end{algorithm}
+
+A simple pseudocode of the direct definition-based implementation has been shown in algorithm \ref{schoolbook}. But one can notice that line \ref{line1} in algorithm \ref{schoolbook}, i.e. the operation $C[i][j] \leftarrow C[i][j] + A[i][k] * B[k][j]$ is trivially the only \textit{sequential independent} part of the code. What the ThreadGo package does is very simple; it launches $n^3$ threads that perform the updation $C[i][j] \leftarrow C[i][j] + A[i][k] * B[k][j]$ for all 3-tuples $(i,j,k), 1 \leq i \leq n, 1 \leq j \leq n, 1 \leq k \leq n$. So even though the number of threads grows in $O(n^3)$, the time complexity of the parallel algorithm is $O(1)$.
+
+\section{Parallelization of the Strassen's algorithm}
+
+In the Strassen's algorithm, the input $n \times n$ matrices $A$ and $B$ and the output $n \times n$ matrix $C$, is broken into 12 $\frac{n}{2} \times \frac{n}{2}$ sub-matrices as follows.
+
+\begin{equation}
+A = \begin{pmatrix}
+A_{11} & A_{12} \\
+A_{21} & A_{22} \\
+\end{pmatrix}
+\end{equation}
+
+\begin{equation}
+B = \begin{pmatrix}
+B_{11} & B_{12} \\
+B_{21} & B_{22} \\
+\end{pmatrix}
+\end{equation}
+
+\begin{equation}
+C = \begin{pmatrix}
+C_{11} & C_{12} \\
+C_{21} & C_{22} \\
+\end{pmatrix}
+\end{equation}
+
+Then the algorithm calls itself seven times recursively with the following multiplicands.
+
+\begin{aligned}
+M_1 = (A_{11}+A_{22})(B_{11}+B_{22}) \\
+M_2 = (A_{21}+A_{22})B_{11} \\
+M_3 = A_{11}(B_{12}-B_{22}) \\
+M_4 = A_{22}(B_{21}-B_{11}) \\
+M_5 = (A_{11}+A_{12})B_{22} \\
+M_6 = (A_{21}-A_{11})(B_{11}+B_{12}) \\
+M_7 = (A_{12}-A_{22})(B_{21}+B_{22}) \\
+\end{aligned}
+
+\vspace{3mm}
+
+From the products $M_1, M_2, \cdots M_7$, the components of the matrix product are calculated.
+
+\begin{aligned}
+C_{11} = M_1 + M_4 - M_5 + M_7 \\
+C_{12} = M_3 + M_5 \\
+C_{21} = M_2 + M_4 \\
+C_{22} = M_1 - M_2 + M_3 + M_6 \\
+\end{aligned}
+
+\vspace{3mm}
+
+If one were to follow the Strassen's algorithm in its serial mode, the time complexity $T_{serial}(n)$ follows the recurrence relation
+
+\begin{equation} \label{equation1}
+T_{serial}(n) = 7 \cdot T_{serial}\bigg(\frac{n}{2}\bigg) + k_1 n^2
+\end{equation}
+
+$k_1$ being a constant. From Master's theorem, $T_{serial}(n) = O(n^{log_2 7})$. In ThreadGo, two aspects of the code are scalably multi-threaded.
+
+\begin{enumerate}
+	\item The seven recursive matrix multiplication procedure calls to calculate the product $M_1, M_2, \cdots M_7$.
+	\item Basic completely parallelizable matrix operations such as initialisation, addition, subtraction etc.
+\end{enumerate}
+
+Hence the time complexity of the scalably parallel version of Strassen's algorithm $T_{parallel}(n)$ follows the recurrence relation
+
+\begin{equation}
+T_{parallel}(n) = T_{parallel}\bigg(\frac{n}{2}\bigg) + k_2
+\end{equation}
+
+$k_2$ being another constant. From Master's theorem, $T_{parallel}(n) = O(log(n))$. Also the number of threads $F(n)$ follows a recurrence relation similar to that in equation \ref{equation1},
+
+\begin{equation}
+F(n) = 7 \cdot F\bigg(\frac{n}{2}\bigg) + k_3 n^2
+\end{equation}
+
+$k_3$ being yet another constant. So the complexity of ThreadGo based implementation of the Strassen's algorithm in terms of the number of threads is $O(n^{log_2 7})$. Even though the number of threads are asymptotically less, in a pragmatic setup, the number of recursive calls and subsequent thread joins take more time than the parallel version of the naive implementation, which actually accosts to a lot of thread switching time, thus having an adverse effect of the total time. Thus, ThreadGo makes a "switch" of the algorithms at certain input size from the parallel version of the Strassen's algorithm to that of the naive implementation.
+
+\section{A deeper insight to ThreadGo}
+
+\subsection{How to install}
+
+Installation is completely hassle-free; just download the ThreadGo package, root it to your favourite folder, and import it in your program from the path properly whenever you want to use it. Since it's a Python 3.7.3 in which this package has been written, it's preferable to import it in a program written in Python 3.7.3 or higher.
+
+\subsection{What else it contains}
+
+For beginners, hobbyists, end-use programmers and other enthusiasts, the root ThreadGo folder contains a script 'example.py' that serves as a simple demonstration as to how one can use ThreadGo package. For those who want to know what and how the script has been written, there is a 'project' sub-directory that consists of several files.
+
+\begin{enumerate}
+	\item For contributors, analysts and others, the source code is there in the program 'threadGo.py'. Since it is very simply written and designed, it will be very easy for the ones well-versed with Python, multithreading and object-oriented design to understand the model.
+	\item For accessors and analysts who are curious to know whether the algorithm discussed is practically correct or not, there is a program 'correctnessTest.py'. This program performs randomised testing by means of partitioning the input space into four of my wishful categories: Non-negative integers, integers, non-negative floating point numbers and the negative ones; and picking random test cases from each of the categories. The tests are performed quickly so the program can rerun for as many as times as the accessor wants.
+	\item Also, to exhibit the robustness of algorithm, there is a program 'performanceTest.py' that essentially pops up a plot of the time and space complexities, one by one (the first plot reveals the time complexity, so if you close that figure the other plot pops up), against the growing size of the matrix. The 'spike' noticeable in the plots show the 'switch' of the algorithm.
+	\item For enthusiasts questioning how and when to use matrix multiplication algorithm, the program 'transitiveClosure.py' serves as an inspiration for them. This program takes a random directed unweighted graph in the form of an adjacency matrix and computes its transitive closure using a reduction to the matrix multiplication  algorithm presented in \cite{skeina}.
+\end{enumerate}
+
+\begin{thebibliography}{99}
+
+\bibitem{strassen}
+V. Strassen, "Gaussian Elimination is not optimal", \textit{Numer. Math.}, 13:354-356, 1969
+\bibitem{williams}
+V. Williams, "Multiplying matrices in $O(n^{2.373})$ time", \textit{ACM Press}, pp. 887-8988, 2014
+\bibitem{kleinberg}
+H. Cohn, R. Kleinberg, B. Szegedy, C. Umans, "Group-theoretic Algorithms for Matrix Multiplication", \textit{$46^{th}$ Annual IEEE Symposium in Foundations of Computer Sciences}, 2005
+\bibitem{raz}
+R. Raz, "On the complexity of matrix multiplication product", \textit{ACM Press}, 2002
+\bibitem{coppersmith}
+D. Coppersmith, S. Winograd, "Matrix multiplication via arithmetic progression", \textit{Journal of Symbolic Computation}, pp. 251-280, 1990
+\bibitem{legall}
+F. Le Gall, "Powers of tensors and fast matrix multiplication", \textit{Proceedings of the $39^{th}$ International Symposium on Symbolic and Algebraic Computation (ISSAC)}, 2014
+\bibitem{schonhage}
+A. Sch\"onhange, "Partial and Total Matrix Multiplication", \textit{SIAM Journal of Computation}, Volume 10, pp.434-455, 1981
+\bibitem{skeina}
+Skiena, Steven, "Sorting and Searching", \textit{The Algorithm Design Manual, Springer}, pp. 45–46, 401–403, 2008
+\bibitem{harald}
+Prokop, Harald, "Cache-Oblivious Algorithms", 1999, \textit{Master's Thesis (Massachusetts Institute of Technology)}
+\bibitem{lam}
+Lam, Monica S., Rothberg, Edward E., Wolf, Michael E., "The Cache Performance and Optimizations of Blocked Algorithms", \textit{Int'l Conf. on Architectural Support for Programming Languages and Operating Systems (ASPLOS)}, 1991
+\bibitem{randall}
+Randall, Keith H., "Cilk: Efficient Multithreaded Computing", \textit{Ph.D. Thesis (Massachusetts Institute of Technology)}, pp. 54-57, 1998
+\bibitem{irony}
+Irony, D., Toledo, S., Tiskin, A., "Communication lower bounds for distributed-memory matrix multiplication", \textit{J. Parallel Distrib. Comput. 64}, 9:1017-1026, 2004
+\bibitem{kak}
+Kak, S., "Efficiency of matrix multiplication on the cross-wired mesh array", \texttt{arXiv:1411.3273}, 2014
+\bibitem{shrohan}
+Mohapatra, S., "Novel applications of cellular automata in computing and computational astrophysics", \textit{B.Tech. Thesis(Indian Institute of Technology Bhubaneswar)}, 2019
+
+\end{thebibliography}
+\end{document}
