@@ -1,0 +1,23 @@
+THANKS FOR DOWNLOADING THREADGO
+_______________________________
+
+1. Once you have downloaded threadGo, you can root the downloaded folder
+wherever you want; but for convenience you can root it in the installation
+folder of the Python version you have.
+
+2. You can import it into your code from the PATH where you have stored as
+'from PATH.project.threadGo import threadMatrixProduct'. Say suppose PATH=Desktop
+and your code is in the root directory where Desktop is a sub-directory,
+you can import threadGo as
+'from Desktop.project.threadGo import threadMatrixProduct'.
+
+3. For documentation, go to 'docs' folder and find the file named
+'threadGoDocs.pdf'. Here you can find information about what and how the 
+product has been designed and also some interesting features of the internal
+architecture of the software.
+
+4. You can refer to the program 'example.py' to check out how the package
+can be used to perform unbelievably fast and efficient matrix multiplication.
+
+Author: Shrohan Mohapatra
+Contact Email: shrohanapple@gmail.com
